@@ -28,10 +28,12 @@ public class ImuCollector implements SensorEventListener {
     private final List<Float> accelX = new ArrayList<>();
     private final List<Float> accelY = new ArrayList<>();
     private final List<Float> accelZ = new ArrayList<>();
+    private final List<Long>  accelTs = new ArrayList<>();
 
     private final List<Float> gyroX = new ArrayList<>();
     private final List<Float> gyroY = new ArrayList<>();
     private final List<Float> gyroZ = new ArrayList<>();
+    private final List<Long>  gyroTs = new ArrayList<>();
 
     public ImuCollector(Context context) {
         sensorManager = (SensorManager) context.getSystemService(Context.SENSOR_SERVICE);
@@ -41,8 +43,8 @@ public class ImuCollector implements SensorEventListener {
 
     /** Clear all buffers and begin sensor acquisition. */
     public void start() {
-        accelX.clear(); accelY.clear(); accelZ.clear();
-        gyroX.clear();  gyroY.clear();  gyroZ.clear();
+        accelX.clear(); accelY.clear(); accelZ.clear(); accelTs.clear();
+        gyroX.clear();  gyroY.clear();  gyroZ.clear();  gyroTs.clear();
         register();
     }
 
@@ -68,10 +70,12 @@ public class ImuCollector implements SensorEventListener {
     @Override
     public void onSensorChanged(SensorEvent event) {
         if (event.sensor.getType() == Sensor.TYPE_ACCELEROMETER) {
+            accelTs.add(event.timestamp);
             accelX.add(event.values[0]);
             accelY.add(event.values[1]);
             accelZ.add(event.values[2]);
         } else if (event.sensor.getType() == Sensor.TYPE_GYROSCOPE) {
+            gyroTs.add(event.timestamp);
             gyroX.add(event.values[0]);
             gyroY.add(event.values[1]);
             gyroZ.add(event.values[2]);
@@ -87,13 +91,15 @@ public class ImuCollector implements SensorEventListener {
     // Data accessors
     // -------------------------------------------------------------------------
 
-    public List<Float> getAccelX() { return accelX; }
-    public List<Float> getAccelY() { return accelY; }
-    public List<Float> getAccelZ() { return accelZ; }
+    public List<Float> getAccelX()          { return accelX; }
+    public List<Float> getAccelY()          { return accelY; }
+    public List<Float> getAccelZ()          { return accelZ; }
+    public List<Long>  getAccelTimestamps() { return accelTs; }
 
-    public List<Float> getGyroX() { return gyroX; }
-    public List<Float> getGyroY() { return gyroY; }
-    public List<Float> getGyroZ() { return gyroZ; }
+    public List<Float> getGyroX()           { return gyroX; }
+    public List<Float> getGyroY()           { return gyroY; }
+    public List<Float> getGyroZ()           { return gyroZ; }
+    public List<Long>  getGyroTimestamps()  { return gyroTs; }
 
     /** Number of accelerometer samples collected in the current session. */
     public int getAccelSampleCount() { return accelX.size(); }

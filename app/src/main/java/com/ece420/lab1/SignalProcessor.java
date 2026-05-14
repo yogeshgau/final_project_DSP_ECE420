@@ -14,8 +14,9 @@ import java.util.List;
 public class SignalProcessor {
 
     // IIR low-pass filter coefficient: y[n] = ALPHA*x[n] + (1-ALPHA)*y[n-1]
-    // Approximate cutoff ~ ALPHA * fs / (2*pi). At 50 Hz, ALPHA=0.2 gives ~1.6 Hz.
-    private static final float LPF_ALPHA = 0.2f;
+    // -3 dB cutoff: fc = arccos(1 - a^2/(2(1-a))) * fs / (2*pi)
+    // ALPHA=0.76 at 50 Hz gives ~14 Hz, preserving all exercise-relevant harmonics.
+    private static final float LPF_ALPHA = 0.76f;
 
     // Repetition period search bounds (in samples).
     // Assumes sensor is running at approximately 50 Hz (SENSOR_DELAY_GAME).
@@ -181,44 +182,71 @@ public class SignalProcessor {
      * @return        number of detected repetitions
      */
     private static int countPeaks(float[] signal, int period) {
-        // Compute mean and standard deviation for threshold
+        return findPeakIndices(signal, period).length;
+    }
+
+    /**
+     * Returns sample indices of all prominent peaks using the same criteria as
+     * countPeaks: local maximum within ±(period/2), above mean + 0.4*std, and
+     * at least (period/2) samples from the previous accepted peak.
+     */
+    private static int[] findPeakIndices(float[] signal, int period) {
         float mean = 0;
         for (float v : signal) mean += v;
         mean /= signal.length;
 
         float variance = 0;
-        for (float v : signal) {
-            float diff = v - mean;
-            variance += diff * diff;
-        }
-        float std = (float) Math.sqrt(variance / signal.length);
-
+        for (float v : signal) { float d = v - mean; variance += d * d; }
+        float std       = (float) Math.sqrt(variance / signal.length);
         float threshold = mean + PEAK_THRESHOLD_STD_FACTOR * std;
-        int minSep = Math.max(1, period / 2);
+        int   minSep    = Math.max(1, period / 2);
 
-        int count = 0;
-        int lastPeakIdx = -2 * minSep;
+        int[] tmp     = new int[signal.length];
+        int   count   = 0;
+        int   lastIdx = -2 * minSep;
 
         for (int i = minSep; i < signal.length - minSep; i++) {
-            if (signal[i] < threshold) continue;
-            if (i - lastPeakIdx < minSep) continue;
-
-            // Check local maximum within ±minSep window
+            if (signal[i] < threshold || i - lastIdx < minSep) continue;
             boolean isLocalMax = true;
             for (int j = i - minSep; j <= i + minSep; j++) {
-                if (j != i && signal[j] >= signal[i]) {
-                    isLocalMax = false;
-                    break;
-                }
+                if (j != i && signal[j] >= signal[i]) { isLocalMax = false; break; }
             }
-
-            if (isLocalMax) {
-                count++;
-                lastPeakIdx = i;
-            }
+            if (isLocalMax) { tmp[count++] = i; lastIdx = i; }
         }
 
-        return count;
+        int[] result = new int[count];
+        System.arraycopy(tmp, 0, result, 0, count);
+        return result;
+    }
+
+    /**
+     * Average time between consecutive jerk peaks, in seconds.
+     *
+     * Runs the same LPF → jerk → autocorrelation → peak-finding pipeline as
+     * countRepsAccel but measures inter-peak intervals directly, giving a more
+     * accurate per-rep cadence than (total_duration / rep_count).
+     *
+     * @return average peak-to-peak interval in seconds, or -1f if fewer than
+     *         two peaks were detected.
+     */
+    public static float avgPeakIntervalSec(List<Float> ax, List<Float> ay, List<Float> az) {
+        int n = ax.size();
+        if (n < MIN_PERIOD_SAMPLES * 2) return -1f;
+
+        float[] fa   = applyLPF(toArray(ax), LPF_ALPHA);
+        float[] fb   = applyLPF(toArray(ay), LPF_ALPHA);
+        float[] fc   = applyLPF(toArray(az), LPF_ALPHA);
+        float[] jerk = jerkMagnitude(fa, fb, fc);
+
+        int period = estimatePeriod(jerk);
+        if (period <= 0) return -1f;
+
+        int[] peaks = findPeakIndices(jerk, period);
+        if (peaks.length < 2) return -1f;
+
+        float sumGaps = 0;
+        for (int i = 1; i < peaks.length; i++) sumGaps += peaks[i] - peaks[i - 1];
+        return (sumGaps / (peaks.length - 1)) / 50f;   // samples → seconds at 50 Hz
     }
 
     // -------------------------------------------------------------------------

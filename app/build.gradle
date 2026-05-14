@@ -5,7 +5,7 @@ android {
     compileSdk 34
 
     defaultConfig {
-        applicationId 'com.ece420.lab1'
+        applicationId 'com.ece420.IMUvers3'
         minSdk 28
         targetSdk 29    // Android 10
 //        targetSdk 33    //Android 13
